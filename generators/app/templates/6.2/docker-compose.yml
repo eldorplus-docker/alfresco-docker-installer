@@ -25,15 +25,22 @@ services:
                 -Dsolr.host=solr6
                 -Dsolr.port=8983
                 -Dsolr.secureComms=none
-                -Dsolr.base.url=/solr
+                -Dsolr.baseUrl=/solr
                 -Dindex.subsystem.name=solr6
                 -Dalfresco.host=<%=serverName%>
                 -Dalfresco.port=<%=port%>
+                <% if (https == 'true') { %>-Dalfresco.protocol=https <%}%>
                 -Dshare.host=<%=serverName%>
                 -Dshare.port=<%=port%>
-                -Daos.baseUrlOverwrite=http<% if (https = 'true') { %>s<%}%>://<%=serverName%>/alfresco/aos
+                <% if (https == 'true') { %>-Dshare.protocol=https <%}%>
+                -Daos.baseUrlOverwrite=http<% if (https == 'true') { %>s<%}%>://<%=serverName%>/alfresco/aos
                 -Dmessaging.broker.url="failover:(nio://activemq:61616)?timeout=3000&jms.useCompression=true"
                 -Ddeployment.method=DOCKER_COMPOSE
+                -Dcsrf.filter.enabled=false <% if (ftp == 'true') { %>
+                -Dftp.enabled=true
+                -Dftp.port=2121
+                -Dftp.dataPortFrom=2433
+                -Dftp.dataPortTo=2434 <% } %>
                 -Dlocal.transform.service.enabled=true
                 -DlocalTransform.pdfrenderer.url=http://alfresco-pdf-renderer:8090/
                 -DlocalTransform.imagemagick.url=http://imagemagick:8090/
@@ -52,18 +59,18 @@ services:
                 -XX:+UseG1GC -XX:+UseStringDeduplication
                 -Xms<%=(ram/2) - 512%>m -Xmx<%=(ram/2) - 512%>m <% if (smtp == "true") { %>
                 -Dmail.host=smtp
-                -Dmail.port=25 
-                -Dmail.username=anonymous 
+                -Dmail.port=25
+                -Dmail.username=anonymous
                 -Dmail.password=
-                -Dmail.protocol=smtp 
-                -Dmail.smtps.starttls.enable=false 
+                -Dmail.protocol=smtp
+                -Dmail.smtps.starttls.enable=false
                 -Dmail.smtps.auth=false <% } %> <% if (ldap == "true") { %>
                 -Dauthentication.chain=alfinst:alfrescoNtlm,ldap1:ldap
                 -Dldap.authentication.active=true
                 -Dldap.authentication.java.naming.provider.url=ldap://openldap:389
                 -Dldap.authentication.userNameFormat=uid=%s,dc=keensoft,dc=es
                 -Dldap.synchronization.active=false <% } %> <% if (ocr == "true") { %>
-                -Docr.command=/opt/alfresco/bin/ocrmypdf.sh 
+                -Docr.command=/opt/alfresco/bin/ocrmypdf.sh
                 -Docr.output.verbose=true
                 -Docr.output.file.prefix.command=
                 -Docr.extra.commands="-j1 --author keensoft --rotate-pages -l spa+eng+fra --deskew --clean --skip-text"
@@ -74,6 +81,11 @@ services:
             - ./logs/alfresco:/usr/local/tomcat/logs <% if (ocr == 'true') { %>
             - ./data/ocr/input:/ocr_input
             - ./data/ocr/output:/ocr_output <% } %>
+        <% if (ftp == 'true') { %>
+        ports:
+            - 2121:2121
+            - 2433:2433
+            - 2434:2434 <% } %>
 
     alfresco-pdf-renderer:
         image: alfresco/alfresco-pdf-renderer:${TRANSFORM_ENGINE_TAG}
@@ -132,7 +144,7 @@ services:
         volumes:
             - ./logs/share:/usr/local/tomcat/logs
 
-    <% if (db == 'postgres') { %>    
+    <% if (db == 'postgres') { %>
     postgres:
         image: postgres:${POSTGRES_TAG}
         mem_limit: <%=ram/8%>m
@@ -151,7 +163,7 @@ services:
         volumes:
             - ./data/postgres-data:/var/lib/postgresql/data
             - ./logs/postgres:/var/log/postgresql
-    <% } %> <% if (db == 'mariadb') { %>    
+    <% } %> <% if (db == 'mariadb') { %>
     mariadb:
         image: mariadb:latest
         mem_limit: <%=ram/8%>m
@@ -180,7 +192,7 @@ services:
           args:
             SEARCH_TAG: $SEARCH_CE_TAG
             SOLR_HOSTNAME: solr6
-            ALFRESCO_HOSTNAME: alfresco 
+            ALFRESCO_HOSTNAME: alfresco
             ALFRESCO_COMMS: none
             CROSS_LOCALE: "<%=crossLocale%>"
         mem_limit: <%=ram/4%>m
@@ -235,7 +247,7 @@ services:
         ports:
             - <%=port%>:<%=port%>
 
-    <% if (smtp == 'true') { %>    
+    <% if (smtp == 'true') { %>
     smtp:
         image: mwader/postfix-relay
         mem_limit: 128m
@@ -250,7 +262,7 @@ services:
           LDAP_DOMAIN: "alfresco.org"
           LDAP_BASE_DN: "dc=alfresco,dc=org"
           LDAP_ADMIN_PASSWORD: "admin"
-        volumes: 
+        volumes:
             - ./data/ldap:/var/lib/ldap
             - ./data/slap.d:/etc/ldap/slap.d
 

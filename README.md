@@ -11,6 +11,7 @@ This project generates a Docker Compose template ready to be used including foll
 * Outbound Email service (smtp)
 * LDAP service for identification (based in OpenLDAP)
 * Several addons available
+* Wrapper Script for waiting the alfresco boot to finish
 
 >> This generator creates a base Docker Template with the configuration selected, but you should review volumes, configuration, modules & tuning parameters before using this composition in Production environments.
 
@@ -55,21 +56,11 @@ You need also to add *Docker Compose* program to your installation.
 https://docs.docker.com/compose/install/
 
 
-## Building
-
-The module is available at **npm**:
-
-https://www.npmjs.com/package/generator-alfresco-docker-installer
-
-If you want to build it locally, you need an environment with Node.js and Yeoman. And from the root folder of the project, just type:
-
-```bash
-$ npm link
-```
-
 ## Running
 
 Create a folder where Docker Compose template files are going to be produced and run the generator.
+
+>>> If you downloaded this project, **dont't** reuse source code folder. Create an empty folder to generate Docker Compose template anywhere.
 
 ```
 $ mkdir docker-compose
@@ -81,10 +72,10 @@ $ yo alfresco-docker-installer
 Several options are provided in order to build the configuration.
 
 ```
-? Which ACS version do you want to use (6.2 is EA only)? 6.1
+? Which ACS version do you want to use? 6.1
 ```
 
-Currently Alfresco Community 6.1 is final, but 6.2 is stil Early Access. If you are planning a longer evaluation, don't use 6.2 by now.
+You can use Alfresco 6.1 or 6.2
 
 ```
 ? How may GB RAM are available for Alfresco (8 is minimum required)? 8
@@ -96,7 +87,7 @@ Alfresco platform could work with less than 8 GB RAM, but it's recommended to pr
 Do you want to use HTTPs for Web Proxy?
 ```
 
-This option enables HTTPs for every service. Default SSL certificates (public and private) are provided in `config/cert` folder. These certificates are not recommended for prod environments, so it's required to replace these files with your own certificates. 
+This option enables HTTPs for every service. Default SSL certificates (public and private) are provided in `config/cert` folder. These certificates are not recommended for prod environments, so it's required to replace these files with your own certificates.
 
 ```
 What is the name of your server?
@@ -109,6 +100,12 @@ If you are deploying on a server different than `localhost`, include in this opt
 ```
 
 HTTP port to be used by every service. If you are running on a Linux computer, you'll need to specify a port greater than 1024 when not starting as `root` user.
+
+```
+? Do you want to use FTP (port 2121)? No
+```
+
+Enable configuration for FTP, using by default port 2121.
 
 ```
 ? Do you want to use MariaDB instead of PostgreSQL? No
@@ -145,6 +142,12 @@ This service provides an internal OpenLDAP server (for authentication). If you w
 
 A small catalog of trusted *addons* is provided by default, but you can install any other using the deployment folders.
 
+```
+? Do you want to use a start script? Yes
+```
+
+The wrapper script for the docker-compose file allows nice features as a wait for alfresco to finish the boot and much more. Use "./start.sh -h" for more information.
+
 ## Passing parameters from command line
 
 Default values for options can be specified in the command line, using a `--name=value` pattern. When an options is specified in the command line, the question is not prompted to the user, so you can generate a Docker Compose template with no user interaction.
@@ -162,6 +165,11 @@ $ yo alfresco-docker-installer --acsVersion=6.1
 * `--smtp`: true or false
 * `--ldap`: true or false
 * `--addons`: list of addons to be installed: js-console, ootbee-support-tools, share-site-creators, simple-ocr, esign-cert
+* `--startscript`: true or false
+* `--https`: true or false
+* `--serverName`: localhost default
+* `--port`: 80 default
+* `--ftp`: true or false
 
 ## Deploying additional addons
 
@@ -197,6 +205,24 @@ You can shutdown it at any moment using following command.
 
 ```
 $ docker-compose down
+```
+
+Alternatively if you choose to apply the start script, you can start the deployment with
+
+```
+./start.sh
+```
+
+It will wait until alfresco is reachable and shutdown with
+
+```
+./start.sh -d
+```
+
+More options are available with.
+
+```
+./start.sh -h
 ```
 
 Following folder structure is generated when Docker Compose is running. Depending on the configuration selected, some folders cannot be available in your server.
@@ -247,6 +273,67 @@ Following folder structure is generated when Docker Compose is running. Dependin
         └── jars            > Share addons with JAR format
 ```
 
+## Docker Volumes
+
+In order to enable persistent storage, several Docker Volumes are configured by default. When using from Linux, some permissions on your local folders need to be set.
+
+Identifying the right UID for every folder can be obtained by starting Docker Compose without the volumes declaration. Following lines should be commented in `docker-compose.yml` file.
+
+```
+    postgres:
+#        volumes:
+#            - ./data/postgres-data:/var/lib/postgresql/data
+#            - ./logs/postgres:/var/log/postgresql
+
+    solr6:
+#        volumes:
+#            - ./data/solr-data:/opt/alfresco-search-services/data
+
+```
+
+Once the volumes have been commented, start Docker Compose.
+
+```
+$ docker-compose up --build --force-recreate
+```
+
+After that, you can find the SOLR Docker Image and the UID of the user owning data folders (`solr` by default).
+
+```
+$ docker ps
+ded1748f961f    nginx:stable-alpine   tmp_proxy_1
+b01e0abb3c0e    tmp_alfresco          tmp_alfresco_1
+4fef719112ad    postgres:10.1         tmp_postgres_1
+99a4bd6ede52    tmp_share             tmp_share_1
+554236b9bedf    tmp_solr6             tmp_solr6_1
+
+$ docker exec -it tmp_solr6_1 sh
+
+$ cd /opt/alfresco-search-services/
+
+$ ls -la
+drwxr-xr-x 5 solr solr 4096 Nov 21 13:07 data
+
+$ id -u solr
+33007
+```
+
+Stop Docker Container and set the right permissions on your host folder.
+
+```
+$ docker-compose down
+
+$ sudo chown -R 33007 data/solr-data
+```
+
+You could need to adjust also the permissions for `postgres` user inside PostgreSQL Docker Image. By default the UID is 999, but you can perform similar operations as above to guess this number.
+
+```
+$ sudo chown -R 999 logs
+```
+
+Uncomment the lines in your `docker-compose.yml` for the volumes declaration and your Docker Compose should be ready to use.
+
 ## Docker Images
 
 * [alfresco-content-repository-community:6.1.2-ga](https://hub.docker.com/r/alfresco/alfresco-content-repository-community)
@@ -261,13 +348,13 @@ Following folder structure is generated when Docker Compose is running. Dependin
 
 ## Service URLs
 
-These are default URLs, selecting HTTP port 80. 
+These are default URLs, selecting HTTP port 80.
 
 * If you selected a different port (for instance 8080), the services will be available in http://localhost:8080.
 
-* If you selected `https`, the services will be available in https://localhost 
+* If you selected `https`, the services will be available in https://localhost
 
-* If you included a different server name from `localhost` (for instance `alfresco.com`), the services will be available in http://alfresco.com or https://alfresco.com 
+* If you included a different server name from `localhost` (for instance `alfresco.com`), the services will be available in http://alfresco.com or https://alfresco.com
 
 *Default URLs*
 
@@ -306,3 +393,17 @@ http://localhost:8088
 Default credentials
 * user: cn=admin,dc=alfresco,dc=org
 * password: admin
+
+## Building
+
+It's not required to build or download this project in order to use it. But this can be done using default *npm* tools.
+
+The module is available at **npm**:
+
+https://www.npmjs.com/package/generator-alfresco-docker-installer
+
+If you want to build it locally, you need an environment with Node.js and Yeoman. And from the root folder of the project, just type:
+
+```bash
+$ npm link
+```
